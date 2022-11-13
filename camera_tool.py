@@ -54,9 +54,6 @@ def update_image(val):
     dis_2 = normalize_in_range(dis_2, -.4, .4, pan_bar_range)
     dis_3 = normalize_in_range(dis_3, -.4, .4, pan_bar_range)
 
-    # dis_2 = dis_1
-    # dis_3 = dis_1
-
     params = np.array([
         image_center_x,
         image_center_y,
@@ -92,6 +89,7 @@ def update_image(val):
     edge_map = np.array(img)
     font_color = (0, 0, 255)
 
+    # uncomment to calibrate image
     # im = cv2.imread('images/world_cup_stadiums/salvador.jpg')
     # im = cv2.resize(im, (1280, 720))
     # edge_map = cv2.resize(edge_map, (im.shape[1], im.shape[0]))

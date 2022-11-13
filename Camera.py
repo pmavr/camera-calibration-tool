@@ -145,7 +145,7 @@ class Camera:
         return [projected_x, projected_y]
 
     def to_edge_map(self, court_template):
-        edge_map = self.draw_court(court_template, with_points=False)
+        edge_map = self.draw_court(court_template, with_points=True)
         self.draw_court_corners(edge_map)
         self.draw_image_center(edge_map)
         self.draw_human_dummy(edge_map)

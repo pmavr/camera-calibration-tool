@@ -1,9 +1,12 @@
 import cv2
 import numpy as np
 from Camera import Camera
+from TopViewer import TopViewer
 from wand.image import Image
 from datetime import datetime
 import sys
+
+import utils
 
 bar_range = 500
 pan_bar_range = 1000
@@ -90,7 +93,8 @@ def update_image(val):
     font_color = (0, 0, 255)
 
     # uncomment to calibrate image
-    # im = cv2.imread('images/world_cup_stadiums/salvador.jpg')
+    # im = cv2.imread('images/oaka_main.jpg')
+    # im = cv2.imread('images/world_cup_2014/test_grouped_matches/brazilia/76.jpg')
     # im = cv2.resize(im, (1280, 720))
     # edge_map = cv2.resize(edge_map, (im.shape[1], im.shape[0]))
     # edge_map = cv2.addWeighted(src1=im,
@@ -107,18 +111,29 @@ def update_image(val):
            f"Dist. 1: {round(dis_1, 3):.3f} \n" \
            f"Dist. 2: {round(dis_2, 3):.3f} \n" \
            f"Dist. 3: {round(dis_3, 3):.3f} \n" \
-           f"Cam. Orient.: {camera.orientation()} \n"
+           f"Cam. Orient.: {camera.orientation()} \n" \
+           f"Min. Focal Len.: {camera.max_focal_length_to_include_midpoints():.1f}\n"
     y0, dy = 30, 20
     for i, line in enumerate(text.split('\n')):
         y = y0 + i * dy
         cv2.putText(edge_map, line, (20, y),
                     cv2.FONT_HERSHEY_SIMPLEX, .5, font_color)
+    homography /= homography[2][2]
     cv2.putText(edge_map, f'{np.round(homography[0,0], 3):<8} {np.round(homography[0,1], 3):=10} {np.round(homography[0,2], 3):>10}', (900, 30), cv2.FONT_HERSHEY_SIMPLEX, .5, font_color)
     cv2.putText(edge_map, f'{np.round(homography[1,0], 3):<8} {np.round(homography[1,1], 3):=10} {np.round(homography[1,2], 3):>10}', (900, 50), cv2.FONT_HERSHEY_SIMPLEX, .5, font_color)
     cv2.putText(edge_map, f'{np.round(homography[2,0], 3):<8} {np.round(homography[2,1], 3):=10} {np.round(homography[2,2], 3):>10}', (900, 70), cv2.FONT_HERSHEY_SIMPLEX, .5, font_color)
     cv2.putText(edge_map, f'Samples:{len(camera_samples)}', (600, y0), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255))
 
-    cv2.imshow(title_window, edge_map)
+    top_viewer = TopViewer()
+    top_view = top_viewer.project_field_of_view_on_top_view(homography, color=(0, 255, 0))
+    top_view = cv2.resize(top_view, (960, 540))
+    tmp = np.zeros((106, 960, 3), dtype=np.uint8)
+    divider = np.ones((2, 960, 3), dtype=np.uint8) * 150
+    top_view = np.concatenate([top_view, divider, tmp], axis=0)
+    edge_map = cv2.resize(edge_map, (1152, 648))
+    divider = np.ones((648, 1, 3), dtype=np.uint8) * 150
+    full = np.concatenate([edge_map, divider, top_view], axis=1)
+    cv2.imshow(title_window, full)
 
 
 def save_camera_samples():
@@ -130,6 +145,14 @@ def save_camera_samples():
 
 
 if __name__ == '__main__':
+    # camera_loc_x, camera_loc_y, camera_loc_z = 282, 432, 68 # belo horizonte
+    # camera_loc_x, camera_loc_y, camera_loc_z = 285, 472, 97 # brazilia
+    # camera_loc_x, camera_loc_y, camera_loc_z = 288, 447, 179 # recife
+    # camera_loc_x, camera_loc_y, camera_loc_z = 269, 368, 175 # rio de janeiro
+    # camera_loc_x, camera_loc_y, camera_loc_z = 286, 432, 194 # salvador
+    # camera_loc_x, camera_loc_y, camera_loc_z = 299, 453, 88 # sao paulo
+    camera_loc_x, camera_loc_y, camera_loc_z = 219, 470, 19 # zosimades
+
     court_template = np.load('binary_court.npy')
     image_resolution = (1280, 720)
     image_center_x = image_resolution[0] * .5
@@ -138,9 +161,9 @@ if __name__ == '__main__':
     tilt_angle = int(bar_range * .65)
     pan_angle = int(pan_bar_range * .5)
     roll_angle = int(bar_range * .5)
-    camera_loc_x = int(bar_range * .57)
-    camera_loc_y = int(bar_range * .5)
-    camera_loc_z = int(bar_range * .5)
+    # camera_loc_x = int(bar_range * .57)
+    # camera_loc_y = int(bar_range * .5)
+    # camera_loc_z = int(bar_range * .5)
     dis_1 = int(pan_bar_range * .5)
     dis_2 = int(pan_bar_range * .5)
     dis_3 = int(pan_bar_range * .5)

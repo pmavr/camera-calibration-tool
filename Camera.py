@@ -8,6 +8,8 @@ class Camera:
     court_width_y = 68.003928
     court_mid_length_x = 52.500276  # meters
     court_mid_width_y = 34.001964
+    x_shift = 0 # -100
+    y_shift = 0 # -650
 
     def __init__(self, camera_params):
         self.image_center_x = camera_params[0]
@@ -330,8 +332,8 @@ class Camera:
         scale = np.array([[f_w, 0, 0],
                           [0, f_h, 0],
                           [0, 0, 1]])
-        shift = np.array([[1, 0, 0],
-                         [0, -1, Camera.court_width_y / f_h],
+        shift = np.array([[1, 0, 0 + Camera.x_shift],
+                         [0, -1, Camera.court_width_y / f_h + Camera.y_shift],
                          [0, 0, 1]])
 
         h = h @ scale

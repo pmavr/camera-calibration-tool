@@ -22,13 +22,20 @@ class Camera:
         self.camera_center_y = camera_params[7]
         self.camera_center_z = camera_params[8]
         self.camera_center = camera_params[6:9]
-        base_rotation = self.rotate_y_axis(0) @ self.rotate_z_axis(self.roll_angle) @ \
-                        self.rotate_x_axis(-90)
-        pan_tilt_rotation = self.pan_y_tilt_x(self.pan_angle, self.tilt_angle)
-        rotation = pan_tilt_rotation @ base_rotation
-        self.rot_vector, _ = cv2.Rodrigues(rotation)
+
         self.image_width = int(2 * self.image_center_x)
         self.image_height = int(2 * self.image_center_y)
+
+        if (0 < self.camera_center_x < Camera.court_length_x) and (self.camera_center_y < 0):
+            self.camera_location = 'center'
+        elif (self.camera_center_x < 0) and (self.camera_center_y > 0):
+            self.camera_location = 'left'
+        elif (Camera.court_length_x < self.camera_center_x) and (self.camera_center_y > 0):
+            self.camera_location = 'right'
+        elif (0 < self.camera_center_x < Camera.court_length_x) and (self.camera_center_y > Camera.court_width_y):
+            self.camera_location = 'opposite'
+        else:
+            raise Exception
 
     def calibration_matrix(self):
         return np.array([[self.focal_length, 0, self.image_center_x],
@@ -36,7 +43,12 @@ class Camera:
                          [0, 0, 1]])
 
     def rotation_matrix(self):
-        rotation, _ = cv2.Rodrigues(self.rot_vector)
+        base_rotation = self.rotate_y_axis(0) @ self.rotate_z_axis(self.roll_angle) @ \
+                        self.rotate_x_axis(-90)
+        pan_tilt_rotation = self.pan_y_tilt_x(self.pan_angle, self.tilt_angle)
+        rotation = pan_tilt_rotation @ base_rotation
+        rot_vector, _ = cv2.Rodrigues(rotation)
+        rotation, _ = cv2.Rodrigues(rot_vector)
         return rotation
 
     def homography(self):
@@ -288,10 +300,26 @@ class Camera:
     def distance_from_camera(self):
         return self.camera_center_z / np.cos(np.radians(90 - self.tilt_angle)) * (-1)
 
+    @staticmethod
+    def distance_at_ground_level(camera_center_z, tilt_angles):
+        return camera_center_z / np.tan(np.radians(abs(tilt_angles)))
+
     def coords_at_distance(self):
-        straight_dist = self.camera_center_z * np.tan(np.radians(90 - self.tilt_angle))
-        x_coord = -straight_dist * np.cos(np.radians(90 - self.pan_angle)) + self.court_mid_length_x
-        y_coord = -straight_dist * np.sin(np.radians(90 - self.pan_angle)) + self.camera_center_y
+        dist = self.distance_at_ground_level(self.camera_center_z, self.tilt_angle)
+        if self.camera_location == 'center':
+            theta = self.pan_angle
+            x_coord = self.camera_center_x + dist * np.sin(np.radians(theta))
+            y_coord = dist * np.cos(np.radians(abs(theta))) - abs(self.camera_center_y)
+        elif self.camera_location == 'left':
+            theta = self.pan_angle - 90
+            x_coord = dist * np.cos(np.radians(abs(theta))) + self.camera_center_x - Camera.court_length_x
+            y_coord = (-1) * dist * np.sin(np.radians(theta)) + abs(self.camera_center_y)
+        elif self.camera_location == 'right':
+            theta = self.pan_angle + 90
+            x_coord = (-1) * dist * np.cos(np.radians(abs(theta))) + self.camera_center_x
+            y_coord = dist * np.sin(np.radians(theta)) + self.camera_center_y
+        elif self.camera_location == 'opposite':
+            pass
         return x_coord, y_coord
 
     def generate_human_dummy(self, height=1.8):

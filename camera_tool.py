@@ -4,6 +4,8 @@ from Camera import Camera
 from TopViewer import TopViewer
 from wand.image import Image
 from datetime import datetime
+
+import pickle
 import sys
 
 import utils
@@ -104,15 +106,15 @@ def update_zloc_trackbar(z_loc):
     update_image(1)
 
 def update_dist1_trackbar(d1):
-    distortion_param_1 = d1
+    camera.distortion_param_1 = normalize_in_range(d1, -.4, .4, pan_bar_range)
     update_image(1)
 
 def update_dist2_trackbar(d2):
-    distortion_param_2 = d2
+    camera.distortion_param_2 = normalize_in_range(d2, -.4, .4, pan_bar_range)
     update_image(1)
 
 def update_dist3_trackbar(d3):
-    distortion_param_3 = d3
+    camera.distortion_param_3 = normalize_in_range(d3, -.4, .4, pan_bar_range)
     update_image(1)
 
 
@@ -129,18 +131,19 @@ def update_image(val):
     homography = camera.homography()
     edge_map = camera.to_edge_map(court_template)
     img = Image.from_array(edge_map)
-    img.distort('barrel', (distortion_param_1, distortion_param_2, distortion_param_3, 1.))
+    img.distort('barrel', (camera.distortion_param_1, camera.distortion_param_2, camera.distortion_param_3, 1.))
     edge_map = np.array(img)
     font_color = (0, 0, 255)
 
     # uncomment to calibrate image
-    # im = cv2.imread('images/oaka/high_behind_right/oaka4.jpg')
-    # im = cv2.imread('images/world_cup_2014/test_grouped_matches/brazilia/76.jpg')
-    # im = cv2.resize(im, (1280, 720))
-    # edge_map = cv2.resize(edge_map, (im.shape[1], im.shape[0]))
-    # edge_map = cv2.addWeighted(src1=im,
-    #                                src2=edge_map,
-    #                                alpha=.95, beta=1, gamma=0.)
+    im = cv2.imread('images/pas/pas_offr2.jpg')
+    # im = cv2.imread(f'images/world_cup_2014/test_grouped_matches/recife.jpg')
+    # im = cv2.imread(f'{path}{num}.jpg')
+    im = cv2.resize(im, (1280, 720))
+    edge_map = cv2.resize(edge_map, (im.shape[1], im.shape[0]))
+    edge_map = cv2.addWeighted(src1=im,
+                                   src2=edge_map,
+                                   alpha=.95, beta=1, gamma=0.)
 
     text = f"focal length: {round(camera.focal_length, 3)} \n" \
            f"cam_loc_X: {round(camera.camera_center_x, 3)} \n" \
@@ -149,9 +152,7 @@ def update_image(val):
            f"tilt: {round(camera.tilt_angle, 3):.3f} \n" \
            f"pan: {round(camera.pan_angle, 3):.3f} \n" \
            f"roll: {round(camera.roll_angle, 3):.3f} \n" \
-           f"Dist. 1: {round(distortion_param_1, 3):.3f} \n" \
-           f"Dist. 2: {round(distortion_param_2, 3):.3f} \n" \
-           f"Dist. 3: {round(distortion_param_3, 3):.3f} \n" \
+           f"Dist. 1: {round(camera.distortion_param_1, 3):.3f} \n" \
            f"Cam. Orient.: {camera.orientation()} \n" \
            f"Min. Focal Len.: {camera.max_focal_length_to_include_midpoints():.1f}\n"
     y0, dy = 30, 20
@@ -171,37 +172,46 @@ def update_image(val):
                 (900, 70), cv2.FONT_HERSHEY_SIMPLEX, .5, font_color)
     cv2.putText(edge_map, f'Samples:{len(camera_samples)}', (600, y0), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255))
 
-    top_viewer = TopViewer()
-    top_view = top_viewer.project_field_of_view_on_top_view(homography, color=(0, 255, 0))
-    top_view = cv2.resize(top_view, (960, 540))
-    tmp = np.zeros((106, 960, 3), dtype=np.uint8)
-    divider = np.ones((2, 960, 3), dtype=np.uint8) * 150
-    top_view = np.concatenate([top_view, divider, tmp], axis=0)
-    edge_map = cv2.resize(edge_map, (1152, 648))
-    divider = np.ones((648, 1, 3), dtype=np.uint8) * 150
-    full = np.concatenate([edge_map, divider, top_view], axis=1)
+    # top_viewer = TopViewer()
+    # top_view = top_viewer.project_field_of_view_on_top_view(homography, color=(0, 255, 0))
+    # top_view = cv2.resize(top_view, (960, 540))
+    # tmp = np.zeros((106, 960, 3), dtype=np.uint8)
+    # divider = np.ones((2, 960, 3), dtype=np.uint8) * 150
+    # top_view = np.concatenate([top_view, divider, tmp], axis=0)
+    # edge_map = cv2.resize(edge_map, (1152, 648))
+    # divider = np.ones((648, 1, 3), dtype=np.uint8) * 150
+    # full = np.concatenate([edge_map, divider, top_view], axis=1)
+    full = edge_map
     cv2.imshow(title_window, full)
 
 
-def save_camera_samples():
-    samples = np.array(camera_samples)
-    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    num_of_samples = len(camera_samples)
-    filename = f'saved_camera_param_data/{timestamp}-{num_of_samples}.npy'
-    np.save(filename, samples)
+def save_camera_params(cam, file_path, file_num):
+    cparams = str(cam)
+    filename = f'{file_path}{file_num}.cparams'
+    with open(filename, "w") as file:
+        file.write(cparams)
+    file.close()
 
 
 if __name__ == '__main__':
+    path = 'images/world_cup_2014/train_val/recife/'
+    num = 133
     # camera_loc_x, camera_loc_y, camera_loc_z = 282, 432, 68 # belo horizonte
     # camera_loc_x, camera_loc_y, camera_loc_z = 285, 472, 97 # brazilia
-    # camera_loc_x, camera_loc_y, camera_loc_z = 288, 447, 179 # recife
-    # camera_loc_x, camera_loc_y, camera_loc_z = 269, 368, 175 # rio de janeiro
-    # camera_loc_x, camera_loc_y, camera_loc_z = 286, 432, 194 # salvador
-    # camera_loc_x, camera_loc_y, camera_loc_z = 299, 453, 88 # sao paulo
-    # camera_loc_x, camera_loc_y, camera_loc_z = 219, 470, 19 # zosimades
+    # camera_loc_x, camera_loc_y, camera_loc_z = 294, 454, 171 #285, 454, 153 #  recife
+    # camera_loc_x, camera_loc_y, camera_loc_z = 269, 353, 204 # 263, 354, 190  # rio de janeiro
+    # camera_loc_x, camera_loc_y, camera_loc_z = 286, 419, 228  # salvador
+    # camera_loc_x, camera_loc_y, camera_loc_z = 300, 446, 105 # sao paulo
+    # camera_loc_x, camera_loc_y, camera_loc_z = 283, 388, 259 # fortaleza
+    # camera_loc_x, camera_loc_y, camera_loc_z = 300, 455, 82 # manaus
+
+
+    camera_loc_x, camera_loc_y, camera_loc_z = 219, 464, 36 # 219, 470, 19 #  zosimades master
+    camera_loc_x, camera_loc_y, camera_loc_z = 219, 464, 36  # zosimades offr
+    camera_loc_x, camera_loc_y, camera_loc_z = 219, 470, 19  # zosimades offl
     # camera_loc_x, camera_loc_y, camera_loc_z = 285, 428, 61  # oaka
 
-    court_template = np.load('binary_court.npy')
+    court_template = utils.get_court_template()
     image_resolution = (1280, 720)
     image_center_x = image_resolution[0] * .5
     image_center_y = image_resolution[1] * .5
@@ -209,15 +219,15 @@ if __name__ == '__main__':
     tilt_angle_trackbar_val = int(bar_range * .5)
     pan_angle_trackbar_val = int(pan_bar_range * .5)
     roll_angle_trackbar_val = int(bar_range * .5)
-    camera_loc_x_trackbar_val = int(bar_range * .5)
-    camera_loc_y_trackbar_val = int(bar_range * .5)
-    camera_loc_z_trackbar_val = int(bar_range * .5)
+    camera_loc_x_trackbar_val = camera_loc_x # int(bar_range * .5)
+    camera_loc_y_trackbar_val = camera_loc_y # int(bar_range * .5)
+    camera_loc_z_trackbar_val = camera_loc_z# int(bar_range * .5)
     dis_1_trackbar_val = int(pan_bar_range * .5)
-    dis_2_trackbar_val = int(pan_bar_range * .5)
-    dis_3_trackbar_val = int(pan_bar_range * .5)
+    # dis_2_trackbar_val = int(pan_bar_range * .5)
+    # dis_3_trackbar_val = int(pan_bar_range * .5)
     record_params_trackbar_val = 0
 
-    camera_loc = 'high_behind_right'   # master, offiside_left, high_behind_left
+    camera_loc = 'offside_right'   # master, offiside_left, high_behind_left
     camera_params = np.array([image_center_x, image_center_y,
                               normalize_in_range(focal_point_trackbar_val, 1000, 15000, bar_range),
                               normalize_tilt_in_range(tilt_angle_trackbar_val),
@@ -229,9 +239,6 @@ if __name__ == '__main__':
                               ])
 
     camera = Camera(camera_params)
-    distortion_param_1 = normalize_in_range(dis_1_trackbar_val, -.4, .4, pan_bar_range)
-    distortion_param_2 = normalize_in_range(dis_2_trackbar_val, -.4, .4, pan_bar_range)
-    distortion_param_3 = normalize_in_range(dis_3_trackbar_val, -.4, .4, pan_bar_range)
 
     title_window = 'Camera Tool'
     cv2.namedWindow(title_window)
@@ -244,8 +251,8 @@ if __name__ == '__main__':
     cv2.createTrackbar('Camera loc y', title_window, camera_loc_y_trackbar_val, bar_range, update_yloc_trackbar)
     cv2.createTrackbar('Camera loc z', title_window, camera_loc_z_trackbar_val, bar_range, update_zloc_trackbar)
     cv2.createTrackbar('Distortion param. 1', title_window, dis_1_trackbar_val, pan_bar_range, update_dist1_trackbar)
-    cv2.createTrackbar('Distortion param. 2', title_window, dis_2_trackbar_val, pan_bar_range, update_dist2_trackbar)
-    cv2.createTrackbar('Distortion param. 3', title_window, dis_3_trackbar_val, pan_bar_range, update_dist3_trackbar)
+    # cv2.createTrackbar('Distortion param. 2', title_window, dis_2_trackbar_val, pan_bar_range, update_dist2_trackbar)
+    # cv2.createTrackbar('Distortion param. 3', title_window, dis_3_trackbar_val, pan_bar_range, update_dist3_trackbar)
     update_image(1)
 
     while 1:
@@ -269,7 +276,7 @@ if __name__ == '__main__':
             cv2.setTrackbarPos('Pan angle', title_window, val + 1)
             update_image(1)
 
-    if len(camera_samples) > 0:
-        save_camera_samples()
-        print('Camera samples saved!')
+
+    save_camera_params(camera, path, num)
+
     sys.exit()

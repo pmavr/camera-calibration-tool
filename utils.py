@@ -1,4 +1,6 @@
 import cv2
+import pickle
+from pathlib import Path
 
 def show_image(img_list, msg_list=None):
     """
@@ -26,3 +28,18 @@ def show_image(img_list, msg_list=None):
     for msg in msg_list:
         cv2.destroyWindow(msg)
 
+def get_project_root():
+    '''
+    :return:  path without slash in the end.
+    '''
+    path = f'{Path(__file__).parent}/'
+    return path
+
+
+def get_court_template():
+    '''Using soccernet line naming convention.'''
+    filename = f'{get_project_root()}court_template.pkl'
+    file = open(filename, 'rb')
+    file_content = pickle.load(file)
+    file.close()
+    return file_content

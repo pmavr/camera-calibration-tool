@@ -22,6 +22,9 @@ class Camera:
         self.camera_center_y = camera_params[7]
         self.camera_center_z = camera_params[8]
         self.camera_center = camera_params[6:9]
+        self.distortion_param_1 = 0.
+        self.distortion_param_2 = 0.
+        self.distortion_param_3 = 0.
 
         self.image_width = int(2 * self.image_center_x)
         self.image_height = int(2 * self.image_center_y)
@@ -56,9 +59,12 @@ class Camera:
         h = P[:, [0, 1, 3]]
         return h
 
+    def get_radial_distortion_coefs(self):
+        return np.array([self.distortion_param_1, self.distortion_param_2, self.distortion_param_3])
+
     def projection_matrix(self):
         P = np.eye(3, 4)
-        P[:, 3] = -1 * self.camera_center
+        P[:, 3] = -1 * np.array([self.camera_center_x, self.camera_center_y, self.camera_center_z])
         K = self.calibration_matrix()
         R = self.rotation_matrix()
         return K @ R @ P
@@ -142,41 +148,82 @@ class Camera:
         projected_y = q[1] / q[2]
         return [projected_x, projected_y]
 
+    @staticmethod
+    def distort_points_on_frame(points, radial_dist_coefs, im_h, im_w):
+        for group in points:
+            line_points = points[group]
+            x, y = line_points[:, 0].reshape(-1, 1), line_points[:, 1].reshape(-1, 1)
+            r = np.linalg.norm(line_points - np.array([[im_w / 2, im_h / 2]]), axis=1).reshape(-1, 1)
+
+            x_distorted = x*(1 + radial_dist_coefs[0] * r**2 + radial_dist_coefs[1] * r**4 + radial_dist_coefs[2] * r**6)
+            y_distorted = y*(1 + radial_dist_coefs[0] * r**2 + radial_dist_coefs[1] * r**4 + radial_dist_coefs[2] * r**6)
+
+            points[group] = np.concatenate([x_distorted, y_distorted], axis=1)
+
+        return points
+
     def to_edge_map(self, court_template):
-        edge_map = self.draw_court(court_template, with_points=True)
+        edge_map = self.draw_court(court_template)
         self.draw_court_corners(edge_map)
         self.draw_court_upper_lower_middle_points(edge_map)
         self.draw_image_center(edge_map)
         self.draw_human_dummy(edge_map)
-        self.draw_team_area_boundaries(edge_map, court_template)
+        # self.draw_team_area_boundaries(edge_map, court_template)
         self.print_dist_from_camera(edge_map)
         self.print_coords_at_dist_from_camera(edge_map)
 
         return edge_map
 
-    def draw_court(self, court_template, with_points=False):
-        edge_map = np.zeros((self.image_height, self.image_width, 3), dtype=np.uint8)
-        n_line_segments = court_template.shape[0]
-
-        for i in range(n_line_segments):
-            line_seg = court_template[i]
-            p1, p2 = line_seg[:2], line_seg[2:]
-
-            q1 = Camera.project_point_on_frame(p1, self.homography())
-            q2 = Camera.project_point_on_frame(p2, self.homography())
-
-            if self._is_off_image_point(q1) and self._is_off_image_point(q2):
-                continue
-
-            q1 = self.point_to_int(q1)
-            q2 = self.point_to_int(q2)
-            cv2.line(edge_map, tuple(q1), tuple(q2), color=(255, 255, 255), thickness=2)
-
-            if with_points:
-                cv2.circle(edge_map, tuple(q1), radius=1, color=(0, 0, 255), thickness=2)
-                cv2.circle(edge_map, tuple(q2), radius=1, color=(0, 0, 255), thickness=2)
+    def draw_court(self, court_template):
+        homography = self.homography()
+        # radial_distort_coefs = self.get_radial_distortion_coefs()
+        edge_map = Camera.to_edge_map_from_h(court_template, homography,
+                                           self.image_height, self.image_width,
+                                           np.zeros(3))
+        # if with_points:
+        #     cv2.circle(edge_map, tuple(q1), radius=1, color=(0, 0, 255), thickness=2)
+        #     cv2.circle(edge_map, tuple(q2), radius=1, color=(0, 0, 255), thickness=2)
 
         return edge_map
+
+    @staticmethod
+    def to_edge_map_from_h(court_template, homography, image_height, image_width, radial_dist_coefs, color=(255, 255, 255), line_width=2):
+        edge_map = np.zeros((image_height, image_width, 3), dtype=np.uint8)
+        projected_points = Camera.get_projected_points(court_template, homography)
+        projected_points = Camera.distort_points_on_frame(projected_points, radial_dist_coefs, image_height, image_width)
+        edge_map = Camera.draw_lines_from_points(edge_map, projected_points, image_height, image_width, color, line_width)
+        return edge_map
+
+    @staticmethod
+    def get_projected_points(court_template, homography):
+        projected_points = {}
+        for line in court_template:
+            line_pts = court_template[line]
+            proj_pts = []
+            for i in range(len(line_pts)):
+                pt = line_pts[i]
+                proj_pt = Camera.project_point_on_frame(pt, homography)
+                proj_pts.append(proj_pt)
+            projected_points[line] = np.array(proj_pts)
+
+        return projected_points
+
+    @staticmethod
+    def draw_lines_from_points(edge_map, points, image_height, image_width, color, line_width):
+        def _is_off_image_point(point):
+            x, y = point
+            return x < 0 or y < 0 or x > image_width or y > image_height
+        output_img = np.copy(edge_map)
+
+        for group in points:
+            for i in range(1, len(points[group])):
+                startpoint, endpoint = points[group][i-1], points[group][i]
+                if _is_off_image_point(startpoint) and _is_off_image_point(endpoint):
+                    continue
+                startpoint = Camera.point_to_int(startpoint)
+                endpoint = Camera.point_to_int(endpoint)
+                cv2.line(output_img, tuple(startpoint), tuple(endpoint), color=color, thickness=line_width)
+        return output_img
 
     def draw_court_corners(self, edge_map, color=(0, 0, 255)):
         points = [
@@ -374,3 +421,8 @@ class Camera:
         projected_y = q[1] / q[2]
         return [projected_x, projected_y]
 
+    def __str__(self):
+        return f'{self.focal_length}\n' \
+            f'{self.camera_center_x}\n{self.camera_center_y}\n{self.camera_center_z}\n' \
+            f'{self.tilt_angle}\n{self.pan_angle}\n{self.roll_angle}\n' \
+            f'{self.distortion_param_1}\n{self.distortion_param_2}\n{self.distortion_param_3}\n'
